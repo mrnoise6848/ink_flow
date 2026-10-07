@@ -21,6 +21,14 @@ class LocalStore {
     }
   }
 
+  Future<void> cleanupExports() async {
+    final cutoff = DateTime.now().subtract(const Duration(days: 7));
+    await for (final entry in Directory('${root.path}/exports').list()) {
+      if (entry is File && (await entry.stat()).modified.isBefore(cutoff))
+        await entry.delete();
+    }
+  }
+
   File file(String relative) {
     if (!RegExp(r'^[a-zA-Z0-9_./-]+$').hasMatch(relative) ||
         relative.contains('..') ||

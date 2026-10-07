@@ -4,12 +4,21 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:pdf/pdf.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:pdf/widgets.dart' as pw;
 
 import '../data/local_store.dart';
 import '../domain/models.dart';
 import '../presentation/ink_canvas.dart';
 import 'page_renderer.dart';
+
+Uint8List compressPage(Uint8List png) {
+  final image = img.decodePng(png);
+  if (image == null)
+    throw const FormatException('Could not encode export page');
+  return img.encodeJpg(image, quality: 92);
+}
 
 class FileExporter {
   FileExporter(this.store);
@@ -66,11 +75,18 @@ class FileExporter {
     bool Function()? cancelled,
   }) async {
     final pdf = pw.Document(title: document.title, creator: 'InkFlow');
+    var compressedBytes = 0;
     for (var i = 0; i < document.pages.length; i++) {
       if (cancelled?.call() == true) throw const ExportCancelled();
       final page = await store.loadPage(document.pages[i]);
       final png = await pagePng(page);
-      final image = pw.MemoryImage(png);
+      final jpeg = await compute(compressPage, png);
+      compressedBytes += jpeg.length;
+      if (compressedBytes > 32 * 1024 * 1024)
+        throw StateError(
+          'This export exceeds the safe memory budget. Export smaller documents or individual pages.',
+        );
+      final image = pw.MemoryImage(jpeg);
       pdf.addPage(
         pw.Page(
           pageFormat: PdfPageFormat(page.width, page.height, marginAll: 0),
@@ -80,6 +96,7 @@ class FileExporter {
       progress?.call(i + 1, document.pages.length);
       await Future<void>.delayed(Duration.zero);
     }
+    if (cancelled?.call() == true) throw const ExportCancelled();
     final output = store.file('exports/${newId()}.pdf');
     await output.writeAsBytes(
       await pdf.save(enableEventLoopBalancing: true),

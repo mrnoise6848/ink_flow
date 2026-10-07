@@ -10,6 +10,11 @@ class Library extends ChangeNotifier {
   final store = LocalStore();
   Future<void> initialize() async {
     await store.initialize();
+    try {
+      await store.cleanupExports();
+    } catch (_) {
+      /* Cleanup must not block note access. */
+    }
     if (!await store.file('library.json').exists() &&
         !await store.file('library.json.bak').exists())
       return;
