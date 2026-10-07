@@ -11,6 +11,26 @@ class DrawingController extends ChangeNotifier {
   double width = 3;
   bool eraser = false, highlight = false, pan = false;
   VoidCallback? onChanged;
+  final List<List<InkStroke>> _undo = [], _redo = [];
+  bool get canUndo => _undo.isNotEmpty;
+  bool get canRedo => _redo.isNotEmpty;
+  void checkpoint() {
+    _undo.add(List.of(page.strokes));
+    if (_undo.length > 80) _undo.removeAt(0);
+    _redo.clear();
+  }
+  void undo() {
+    if (!canUndo || pointer != null) return;
+    _redo.add(List.of(page.strokes));
+    page.strokes..clear()..addAll(_undo.removeLast());
+    onChanged?.call(); notifyListeners();
+  }
+  void redo() {
+    if (!canRedo || pointer != null) return;
+    _undo.add(List.of(page.strokes));
+    page.strokes..clear()..addAll(_redo.removeLast());
+    onChanged?.call(); notifyListeners();
+  }
   int? pointer;
   bool pressureAvailable = false;
   double pressure(PointerEvent e) {
@@ -23,6 +43,7 @@ class DrawingController extends ChangeNotifier {
   void begin(PointerDownEvent e) {
     if (pan || pointer != null) return;
     pointer = e.pointer;
+    checkpoint();
     if (eraser) { erase(e.localPosition); return; }
     active = InkStroke(points: [InkPoint(e.localPosition.dx, e.localPosition.dy, pressure(e))], color: color, width: width, opacity: highlight ? 0.3 : 1, device: e.kind.name, pressureSupported: pressureAvailable);
     notifyListeners();
@@ -41,13 +62,13 @@ class DrawingController extends ChangeNotifier {
     if (active != null) { page.strokes.add(active!); active = null; onChanged?.call(); }
     pointer = null; notifyListeners();
   }
-  void cancel(PointerCancelEvent e) { if (pointer == e.pointer) { active = null; pointer = null; notifyListeners(); } }
+  void cancel(PointerCancelEvent e) { if (pointer == e.pointer) { active = null; pointer = null; if (_undo.isNotEmpty) { page.strokes..clear()..addAll(_undo.removeLast()); onChanged?.call(); } notifyListeners(); } }
   void erase(Offset point) {
     final old = page.strokes.length;
     page.strokes.removeWhere((s) => s.points.any((p) => (point - Offset(p.x, p.y)).distance < 12 + s.width / 2));
     if (page.strokes.length != old) { onChanged?.call(); notifyListeners(); }
   }
-  void clear() { page.strokes.clear(); onChanged?.call(); notifyListeners(); }
+  void clear() { if (page.strokes.isEmpty || pointer != null) return; checkpoint(); page.strokes.clear(); onChanged?.call(); notifyListeners(); }
 }
 
 void paintStrokes(Canvas canvas, Iterable<InkStroke> strokes) {
