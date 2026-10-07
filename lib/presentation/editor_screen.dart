@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/library.dart';
 import '../domain/models.dart';
@@ -223,230 +224,322 @@ class _EditorScreenState extends State<EditorScreen>
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !dirty && saving == null && !exporting,
-    onPopInvokedWithResult: (didPop, result) async {
-      if (didPop || exporting) return;
-      await persist();
-      if (context.mounted && !dirty) Navigator.pop(context);
-    },
-    child: Scaffold(
-      appBar: AppBar(
-        title: Text(widget.document.title),
+  Future<void> clearPage() async {
+    if (drawing.page.strokes.isEmpty || loading || error != null || exporting)
+      return;
+    final clear = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear ink on this page?'),
+        content: const Text(
+          'You can undo this action. The page background is kept.',
+        ),
         actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Export',
-            enabled: !loading && !exporting && error == null,
-            onSelected: export,
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: 'pdf',
-                child: Text('Export document as PDF'),
-              ),
-              PopupMenuItem(value: 'png', child: Text('Export page as PNG')),
-              PopupMenuItem(
-                value: 'share-pdf',
-                child: Text('Share document PDF'),
-              ),
-              PopupMenuItem(value: 'share-png', child: Text('Share page PNG')),
-            ],
-            icon: const Icon(Icons.ios_share),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-          PopupMenuButton<String>(
-            tooltip: 'Page actions',
-            onSelected: pageAction,
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'add', child: Text('Add page')),
-              const PopupMenuItem(
-                value: 'duplicate',
-                child: Text('Duplicate page'),
-              ),
-              const PopupMenuItem(
-                value: 'earlier',
-                child: Text('Move page earlier'),
-              ),
-              const PopupMenuItem(
-                value: 'later',
-                child: Text('Move page later'),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                enabled: widget.document.pages.length > 1,
-                child: const Text('Delete page'),
-              ),
-            ],
-          ),
-          IconButton(
-            tooltip: 'Rename document',
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: () async {
-              final title = await askText(
-                context,
-                'Rename document',
-                widget.document.title,
-              );
-              if (title != null) {
-                widget.document.title = title;
-                widget.library.changed(widget.document);
-                setState(() {});
-              }
-            },
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear ink'),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          if (exporting)
-            ListTile(
-              leading: const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(),
+    );
+    if (clear == true && mounted) drawing.clear();
+  }
+
+  void undo() {
+    if (!loading && error == null && !exporting) drawing.undo();
+  }
+
+  void redo() {
+    if (!loading && error == null && !exporting) drawing.redo();
+  }
+
+  @override
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {
+      const SingleActivator(LogicalKeyboardKey.keyZ, control: true): undo,
+      const SingleActivator(LogicalKeyboardKey.keyZ, meta: true): undo,
+      const SingleActivator(
+        LogicalKeyboardKey.keyZ,
+        control: true,
+        shift: true,
+      ): redo,
+      const SingleActivator(LogicalKeyboardKey.keyZ, meta: true, shift: true):
+          redo,
+      const SingleActivator(LogicalKeyboardKey.keyY, control: true): redo,
+      const SingleActivator(LogicalKeyboardKey.keyS, control: true): persist,
+      const SingleActivator(LogicalKeyboardKey.keyS, meta: true): persist,
+    },
+    child: Focus(
+      autofocus: true,
+      child: PopScope(
+        canPop: !dirty && saving == null && !exporting,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop || exporting) return;
+          await persist();
+          if (context.mounted && !dirty) Navigator.pop(context);
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(widget.document.title),
+            actions: [
+              PopupMenuButton<String>(
+                tooltip: 'Export',
+                enabled: !loading && !exporting && error == null,
+                onSelected: export,
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'pdf',
+                    child: Text('Export document as PDF'),
+                  ),
+                  PopupMenuItem(
+                    value: 'png',
+                    child: Text('Export page as PNG'),
+                  ),
+                  PopupMenuItem(
+                    value: 'share-pdf',
+                    child: Text('Share document PDF'),
+                  ),
+                  PopupMenuItem(
+                    value: 'share-png',
+                    child: Text('Share page PNG'),
+                  ),
+                ],
+                icon: const Icon(Icons.ios_share),
               ),
-              title: Text(
-                'Exporting $exportedPages / ${widget.document.pages.length}',
-              ),
-              trailing: TextButton(
-                onPressed: () => cancelExport = true,
-                child: const Text('Cancel'),
-              ),
-            ),
-          if (error != null)
-            MaterialBanner(
-              content: Text(error!),
-              actions: [
-                TextButton(
-                  onPressed: () async {
-                    await persist();
-                    if (!dirty) await loadPage(index);
-                  },
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          Material(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Undo',
-                    icon: const Icon(Icons.undo),
-                    onPressed: drawing.undo,
+              PopupMenuButton<String>(
+                tooltip: 'Page actions',
+                onSelected: pageAction,
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'add', child: Text('Add page')),
+                  const PopupMenuItem(
+                    value: 'duplicate',
+                    child: Text('Duplicate page'),
                   ),
-                  IconButton(
-                    tooltip: 'Redo',
-                    icon: const Icon(Icons.redo),
-                    onPressed: drawing.redo,
+                  const PopupMenuItem(
+                    value: 'earlier',
+                    child: Text('Move page earlier'),
                   ),
-                  IconButton(
-                    tooltip: 'Pen',
-                    isSelected:
-                        !drawing.eraser && !drawing.pan && !drawing.highlight,
-                    icon: const Icon(Icons.edit),
-                    onPressed: () => setState(() {
-                      drawing.eraser = false;
-                      drawing.pan = false;
-                      drawing.highlight = false;
-                    }),
+                  const PopupMenuItem(
+                    value: 'later',
+                    child: Text('Move page later'),
                   ),
-                  IconButton(
-                    tooltip: 'Highlighter',
-                    isSelected: drawing.highlight && !drawing.pan,
-                    icon: const Icon(Icons.brush_outlined),
-                    onPressed: () => setState(() {
-                      drawing.highlight = true;
-                      drawing.eraser = false;
-                      drawing.pan = false;
-                    }),
-                  ),
-                  IconButton(
-                    tooltip: 'Eraser',
-                    isSelected: drawing.eraser,
-                    icon: const Icon(Icons.auto_fix_normal),
-                    onPressed: () => setState(() {
-                      drawing.eraser = true;
-                      drawing.pan = false;
-                    }),
-                  ),
-                  IconButton(
-                    tooltip: 'Pan and zoom',
-                    isSelected: drawing.pan,
-                    icon: const Icon(Icons.pan_tool_outlined),
-                    onPressed: () => setState(() => drawing.pan = !drawing.pan),
-                  ),
-                  for (final color in [
-                    0xff202a35,
-                    0xff256d60,
-                    0xffc0392b,
-                    0xff265cc5,
-                    0xffffb300,
-                  ])
-                    IconButton(
-                      tooltip:
-                          'Ink color ${Color(color).toARGB32().toRadixString(16)}',
-                      icon: Icon(Icons.circle, color: Color(color)),
-                      onPressed: () => setState(() => drawing.color = color),
-                    ),
-                  SizedBox(
-                    width: 140,
-                    child: Slider(
-                      label: 'Stroke width ${drawing.width.round()}',
-                      value: drawing.width,
-                      min: 1,
-                      max: 20,
-                      onChanged: (v) => setState(() => drawing.width = v),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Clear page',
-                    icon: const Icon(Icons.delete_sweep_outlined),
-                    onPressed: drawing.clear,
+                  PopupMenuItem(
+                    value: 'delete',
+                    enabled: widget.document.pages.length > 1,
+                    child: const Text('Delete page'),
                   ),
                 ],
               ),
-            ),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
               IconButton(
-                tooltip: 'Previous page',
-                onPressed: index > 0 && !loading
-                    ? () => loadPage(index - 1)
-                    : null,
-                icon: const Icon(Icons.chevron_left),
-              ),
-              Text('Page ${index + 1} / ${widget.document.pages.length}'),
-              IconButton(
-                tooltip: 'Next page',
-                onPressed: index + 1 < widget.document.pages.length && !loading
-                    ? () => loadPage(index + 1)
-                    : null,
-                icon: const Icon(Icons.chevron_right),
+                tooltip: 'Rename document',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: () async {
+                  final title = await askText(
+                    context,
+                    'Rename document',
+                    widget.document.title,
+                  );
+                  if (title != null) {
+                    widget.document.title = title;
+                    widget.library.changed(widget.document);
+                    setState(() {});
+                  }
+                },
               ),
             ],
           ),
-          Expanded(
-            child: loading
-                ? const Center(child: CircularProgressIndicator())
-                : error != null
-                ? const Center(child: Text('Page unavailable'))
-                : PageViewport(
-                    key: ValueKey(drawing.page.id),
-                    pageSize: Size(drawing.page.width, drawing.page.height),
-                    pan: drawing.pan,
-                    child: AbsorbPointer(
-                      absorbing: exporting,
-                      child: InkCanvas(
-                        controller: drawing,
-                        background: background,
-                      ),
+          body: Column(
+            children: [
+              if (exporting)
+                ListTile(
+                  leading: const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(),
+                  ),
+                  title: Text(
+                    'Exporting $exportedPages / ${widget.document.pages.length}',
+                  ),
+                  trailing: TextButton(
+                    onPressed: () => cancelExport = true,
+                    child: const Text('Cancel'),
+                  ),
+                ),
+              if (error != null)
+                MaterialBanner(
+                  content: Text(error!),
+                  actions: [
+                    TextButton(
+                      onPressed: () async {
+                        await persist();
+                        if (!dirty) await loadPage(index);
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ListenableBuilder(
+                listenable: drawing.status,
+                builder: (context, _) => Material(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Undo',
+                          icon: const Icon(Icons.undo),
+                          onPressed:
+                              drawing.canUndo &&
+                                  !loading &&
+                                  error == null &&
+                                  !exporting
+                              ? undo
+                              : null,
+                        ),
+                        IconButton(
+                          tooltip: 'Redo',
+                          icon: const Icon(Icons.redo),
+                          onPressed:
+                              drawing.canRedo &&
+                                  !loading &&
+                                  error == null &&
+                                  !exporting
+                              ? redo
+                              : null,
+                        ),
+                        IconButton(
+                          tooltip: 'Pen',
+                          isSelected:
+                              !drawing.eraser &&
+                              !drawing.pan &&
+                              !drawing.highlight,
+                          icon: const Icon(Icons.edit),
+                          onPressed: () => setState(() {
+                            drawing.eraser = false;
+                            drawing.pan = false;
+                            drawing.highlight = false;
+                          }),
+                        ),
+                        IconButton(
+                          tooltip: 'Highlighter',
+                          isSelected: drawing.highlight && !drawing.pan,
+                          icon: const Icon(Icons.brush_outlined),
+                          onPressed: () => setState(() {
+                            drawing.highlight = true;
+                            drawing.eraser = false;
+                            drawing.pan = false;
+                          }),
+                        ),
+                        IconButton(
+                          tooltip: 'Eraser',
+                          isSelected: drawing.eraser,
+                          icon: const Icon(Icons.auto_fix_normal),
+                          onPressed: () => setState(() {
+                            drawing.eraser = true;
+                            drawing.pan = false;
+                          }),
+                        ),
+                        IconButton(
+                          tooltip: 'Pan and zoom',
+                          isSelected: drawing.pan,
+                          icon: const Icon(Icons.pan_tool_outlined),
+                          onPressed: () =>
+                              setState(() => drawing.pan = !drawing.pan),
+                        ),
+                        for (final color in [
+                          0xff202a35,
+                          0xff256d60,
+                          0xffc0392b,
+                          0xff265cc5,
+                          0xffffb300,
+                        ])
+                          IconButton(
+                            tooltip: {
+                              0xff202a35: 'Black ink',
+                              0xff256d60: 'Green ink',
+                              0xffc0392b: 'Red ink',
+                              0xff265cc5: 'Blue ink',
+                              0xffffb300: 'Amber ink',
+                            }[color]!,
+                            icon: Icon(Icons.circle, color: Color(color)),
+                            onPressed: () =>
+                                setState(() => drawing.color = color),
+                          ),
+                        SizedBox(
+                          width: 140,
+                          child: Slider(
+                            label: 'Stroke width ${drawing.width.round()}',
+                            value: drawing.width,
+                            min: 1,
+                            max: 20,
+                            onChanged: (v) => setState(() => drawing.width = v),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Clear page',
+                          icon: const Icon(Icons.delete_sweep_outlined),
+                          onPressed: clearPage,
+                        ),
+                      ],
                     ),
                   ),
+                ),
+              ),
+              ListenableBuilder(
+                listenable: drawing.status,
+                builder: (_, _) => Text(
+                  drawing.pressureAvailable
+                      ? 'Stylus pressure available'
+                      : 'Stylus pressure not reported by current pointer',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    tooltip: 'Previous page',
+                    onPressed: index > 0 && !loading
+                        ? () => loadPage(index - 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                  ),
+                  Text('Page ${index + 1} / ${widget.document.pages.length}'),
+                  IconButton(
+                    tooltip: 'Next page',
+                    onPressed:
+                        index + 1 < widget.document.pages.length && !loading
+                        ? () => loadPage(index + 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_right),
+                  ),
+                ],
+              ),
+              Expanded(
+                child: loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : error != null
+                    ? const Center(child: Text('Page unavailable'))
+                    : PageViewport(
+                        key: ValueKey(drawing.page.id),
+                        pageSize: Size(drawing.page.width, drawing.page.height),
+                        pan: drawing.pan,
+                        child: AbsorbPointer(
+                          absorbing: exporting,
+                          child: InkCanvas(
+                            controller: drawing,
+                            background: background,
+                          ),
+                        ),
+                      ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     ),
   );

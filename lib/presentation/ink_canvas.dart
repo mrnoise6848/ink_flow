@@ -14,6 +14,7 @@ class DrawingController extends ChangeNotifier {
   bool eraser = false, highlight = false, pan = false;
   VoidCallback? onChanged;
   int revision = 0;
+  final status = ValueNotifier<int>(0);
   ui.Picture? _picture;
   int _pictureRevision = -1;
   ui.Picture get picture {
@@ -30,11 +31,13 @@ class DrawingController extends ChangeNotifier {
   @override
   void dispose() {
     _picture?.dispose();
+    status.dispose();
     super.dispose();
   }
 
   void changed() {
     revision++;
+    status.value++;
     onChanged?.call();
     notifyListeners();
   }
@@ -95,6 +98,7 @@ class DrawingController extends ChangeNotifier {
       device: e.kind.name,
       pressureSupported: pressureAvailable,
     );
+    status.value++;
     notifyListeners();
   }
 
@@ -120,6 +124,7 @@ class DrawingController extends ChangeNotifier {
       changed();
     }
     pointer = null;
+    status.value++;
     notifyListeners();
   }
 
@@ -212,7 +217,8 @@ class InkCanvas extends StatelessWidget {
   final ui.Image? background;
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Handwriting page. Use the toolbar to draw, erase or move the page.',
+    label:
+        'Handwriting page, ${controller.page.strokes.length} strokes. Use the toolbar to draw, erase or move the page.',
     child: RepaintBoundary(
       child: SizedBox(
         width: controller.page.width,
