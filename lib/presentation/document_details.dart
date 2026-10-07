@@ -45,11 +45,12 @@ Future<void> documentDetails(
   } else if (action == 'tags') {
     final tags = await askText(
       context,
-      'Tags separated by commas (enter - to clear)',
+      'Tags separated by commas',
       document.tags.join(', '),
+      true,
     );
     if (tags != null) {
-      document.tags = tags == '-'
+      document.tags = tags.isEmpty
           ? []
           : tags
                 .split(',')

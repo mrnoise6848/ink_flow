@@ -4,21 +4,24 @@ String newId() =>
     '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${Random.secure().nextInt(1 << 32).toRadixString(36)}';
 
 String localId(Object? value) {
-  if (value is! String || !RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(value))
+  if (value is! String || !RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(value)) {
     throw const FormatException('Invalid local ID');
+  }
   return value;
 }
 
 double finiteNumber(Object? value) {
-  if (value is! num || !value.toDouble().isFinite)
+  if (value is! num || !value.toDouble().isFinite) {
     throw const FormatException('Invalid number');
+  }
   return value.toDouble();
 }
 
 List<String> pageIds(Object? value) {
   final ids = (value as List).map(localId).toList();
-  if (ids.isEmpty || ids.toSet().length != ids.length)
+  if (ids.isEmpty || ids.toSet().length != ids.length) {
     throw const FormatException('Invalid document pages');
+  }
   return ids;
 }
 
@@ -59,8 +62,8 @@ class InkDocument {
     'notebook': notebookId,
     'created': created.toIso8601String(),
     'modified': modified.toIso8601String(),
-    'pages': pages,
-    'tags': tags,
+    'pages': List<String>.of(pages),
+    'tags': List<String>.of(tags),
     'favorite': favorite,
   };
   factory InkDocument.fromJson(Map<String, dynamic> j) => InkDocument(

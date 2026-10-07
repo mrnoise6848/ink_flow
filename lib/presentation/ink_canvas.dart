@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart';
 
 import '../domain/models.dart';
 import '../services/ink_renderer.dart';
@@ -233,7 +234,9 @@ class InkCanvas extends StatelessWidget {
               onPointerMove: controller.move,
               onPointerUp: controller.end,
               onPointerCancel: controller.cancel,
-              child: CustomPaint(painter: InkPainter(controller)),
+              child: ClipRect(
+                child: CustomPaint(painter: InkPainter(controller)),
+              ),
             ),
           ],
         ),

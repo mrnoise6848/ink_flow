@@ -11,6 +11,7 @@ Future<String?> askText(
   BuildContext context,
   String title, [
   String initial = '',
+  bool allowEmpty = false,
 ]) async {
   final controller = TextEditingController(text: initial);
   final result = await showDialog<String>(
@@ -37,7 +38,7 @@ Future<String?> askText(
   );
   // Dialog's route can still animate after pop; dispose after the frame settles.
   Future<void>.delayed(const Duration(seconds: 1), controller.dispose);
-  return result == null || result.isEmpty ? null : result;
+  return result == null || (!allowEmpty && result.isEmpty) ? null : result;
 }
 
 class LibraryScreen extends StatefulWidget {
@@ -122,6 +123,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
         appBar: AppBar(
           title: const Text('InkFlow'),
           actions: [
+            IconButton(
+              tooltip: 'Open-source licenses',
+              icon: const Icon(Icons.info_outline),
+              onPressed: () =>
+                  showLicensePage(context: context, applicationName: 'InkFlow'),
+            ),
             IconButton(
               tooltip: 'Import image',
               onPressed: importing ? null : () => importFile(image: true),
@@ -266,9 +273,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                   leading: const Icon(
                                     Icons.description_outlined,
                                   ),
-                                  title: Text(d.title),
+                                  title: Text(
+                                    d.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                   subtitle: Text(
-                                    '${d.pages.length} pages • ${d.modified.toLocal().toString().substring(0, 16)}',
+                                    '${d.pages.length} pages • ${d.modified.toLocal().toString().substring(0, 16)}${d.tags.isEmpty ? '' : '\n${d.tags.join(' • ')}'}',
                                   ),
                                   onTap: () => openDocument(d),
                                   trailing: Row(

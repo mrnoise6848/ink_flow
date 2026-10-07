@@ -64,8 +64,9 @@ class LocalStore {
       final data = await compute(encodeJson, snapshot);
       final target = file(relative), temporary = file('$relative.tmp');
       await temporary.writeAsString(data, flush: true);
-      if (!_recovered.contains(relative) && await target.exists())
+      if (!_recovered.contains(relative) && await target.exists()) {
         await target.copy('${target.path}.bak');
+      }
       await temporary.rename(target.path);
       _recovered.remove(relative);
     });
@@ -77,11 +78,13 @@ class LocalStore {
   Future<InkPage> loadPage(String id) async {
     localId(id);
     Future<InkPage> parse(File file) async {
-      if ((await file.length()) > 32 * 1024 * 1024)
+      if ((await file.length()) > 32 * 1024 * 1024) {
         throw const FormatException('Page exceeds safe memory limit');
+      }
       final page = await compute(decodePage, await file.readAsString());
-      if (page.id != id)
+      if (page.id != id) {
         throw const FormatException('Page ID does not match file');
+      }
       return page;
     }
 

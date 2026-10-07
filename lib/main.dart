@@ -44,7 +44,30 @@ class _MyAppState extends State<MyApp> {
         if (snapshot.hasError) {
           return Scaffold(
             body: Center(
-              child: Text('Could not open library: ${snapshot.error}'),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, size: 40),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Could not open library: ${snapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() {
+                        library.notebooks.clear();
+                        library.documents.clear();
+                        library.invalidNotebooks.clear();
+                        library.invalidDocuments.clear();
+                        ready = library.initialize();
+                      }),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
             ),
           );
         }

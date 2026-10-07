@@ -7,7 +7,7 @@ cupertino_icons 1.0.8 and flutter_lints 6.0.0. No persistence, routing framework
 localization, service layer or reusable domain components existed. Android package
 com.noise.ink_flow and iOS com.noise.inkFlow, iOS target 15.0 are preserved.
 Android uses the existing Gradle/Kotlin configuration, including pre-existing edits.
-The original counter widget test is obsolete and will be updated, not executed.
+The obsolete counter widget test is removed. Tests are not executed per user instruction.
 
 ## Integration
 Keep Flutter State/ChangeNotifier and Navigator. Domain contains notebook, document,
@@ -20,3 +20,8 @@ notifier. No cloud or AI provider is part of startup or document operations.
 User explicitly requested no tests. Formatting, static analysis and a final Android
 build are permitted; device behavior and performance remain unverified unless
 explicitly reported otherwise.
+
+Native plugins require the standard Flutter-generated iOS Podfile and Pods xcconfig
+includes; these are added without changing the existing iOS 15 deployment target.
+Image 4.10.1 (MIT) is a direct dependency reused from pdf's existing transitive
+codec for worker-isolate JPEG encoding. All original dependency versions remain.

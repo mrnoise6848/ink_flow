@@ -354,6 +354,7 @@ class _EditorScreenState extends State<EditorScreen>
               ),
               PopupMenuButton<String>(
                 tooltip: 'Page actions',
+                enabled: !loading && !exporting,
                 onSelected: pageAction,
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: 'add', child: Text('Add page')),
@@ -379,23 +380,38 @@ class _EditorScreenState extends State<EditorScreen>
               IconButton(
                 tooltip: 'Rename document',
                 icon: const Icon(Icons.edit_outlined),
-                onPressed: () async {
-                  final title = await askText(
-                    context,
-                    'Rename document',
-                    widget.document.title,
-                  );
-                  if (title != null) {
-                    widget.document.title = title;
-                    widget.library.changed(widget.document);
-                    setState(() {});
-                  }
-                },
+                onPressed: exporting
+                    ? null
+                    : () async {
+                        final title = await askText(
+                          context,
+                          'Rename document',
+                          widget.document.title,
+                        );
+                        if (title != null && mounted) {
+                          widget.document.title = title;
+                          widget.library.changed(widget.document);
+                          setState(() {});
+                        }
+                      },
               ),
             ],
           ),
           body: Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  saving != null
+                      ? 'Saving…'
+                      : dirty
+                      ? 'Unsaved changes'
+                      : loading || pageUnavailable
+                      ? 'Opening page…'
+                      : 'Saved on this device',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
               if (exporting)
                 ListTile(
                   leading: const SizedBox(
@@ -439,7 +455,7 @@ class _EditorScreenState extends State<EditorScreen>
                             onPressed:
                                 drawing.canUndo &&
                                     !loading &&
-                                    error == null &&
+                                    !pageUnavailable &&
                                     !exporting
                                 ? undo
                                 : null,
@@ -450,7 +466,7 @@ class _EditorScreenState extends State<EditorScreen>
                             onPressed:
                                 drawing.canRedo &&
                                     !loading &&
-                                    error == null &&
+                                    !pageUnavailable &&
                                     !exporting
                                 ? redo
                                 : null,
