@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/library.dart';
 import '../domain/models.dart';
+import 'editor_screen.dart';
 
 Future<String?> askText(BuildContext context, String title, [String initial = '']) async {
   final controller = TextEditingController(text: initial);
@@ -21,7 +22,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool favorites = false;
   Library get library => widget.library;
   Future<void> openDocument(InkDocument d) async {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(d.title)));
+    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => EditorScreen(library: library, document: d)));
+    if (mounted) setState(() {});
   }
   Future<void> createNote() async {
     if (library.notebooks.isEmpty) { library.addNotebook('My notebook'); }
