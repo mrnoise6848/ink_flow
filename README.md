@@ -10,7 +10,7 @@ Pages stay editable inside the app. When you need to send something, export a do
 
 - **Handwriting:** pen colors and widths, highlighter, pressure when reported by the device, whole-stroke erase and undo/redo.
 - **Annotation:** import PDF, PNG, JPEG or WebP, draw over the original background, and switch to move mode for pan/zoom.
-- **Notebooks:** add, duplicate, reorder and move pages/documents; use titles, tags, favorites and metadata search to find them again.
+- **Notebooks:** add, duplicate and reorder pages; move documents between notebooks; use titles, tags, favorites and metadata search to find them again.
 
 The eraser removes InkFlow strokes, leaving imported background content intact. Search covers organization metadata; handwriting recognition and OCR are future work.
 
