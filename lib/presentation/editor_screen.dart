@@ -7,6 +7,7 @@ import '../data/library.dart';
 import '../domain/models.dart';
 import 'ink_canvas.dart';
 import '../services/page_renderer.dart';
+import '../services/exporter.dart';
 import 'library_screen.dart';
 
 class EditorScreen extends StatefulWidget {
@@ -31,6 +32,43 @@ class _EditorScreenState extends State<EditorScreen>
   ui.Image? background;
   Timer? timer;
   Future<void>? saving;
+  bool exporting = false, cancelExport = false;
+  int exportedPages = 0;
+  Future<void> export(String format) async {
+    if (exporting || loading || error != null) return;
+    await persist();
+    if (dirty || !mounted) return;
+    setState(() {
+      exporting = true;
+      cancelExport = false;
+      exportedPages = 0;
+    });
+    try {
+      final exporter = FileExporter(widget.library.store);
+      final file = format == 'png'
+          ? await exporter.exportImage(drawing.page)
+          : await exporter.exportPdf(
+              widget.document,
+              cancelled: () => cancelExport,
+              progress: (done, total) {
+                if (mounted) setState(() => exportedPages = done);
+              },
+            );
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Export saved: ${file.path}')));
+    } on ExportCancelled {
+      /* User cancelled between pages. */
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
+
   Future<void> addPage({bool duplicate = false}) async {
     await persist();
     if (dirty || !mounted) return;
@@ -181,9 +219,9 @@ class _EditorScreenState extends State<EditorScreen>
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !dirty && saving == null,
+    canPop: !dirty && saving == null && !exporting,
     onPopInvokedWithResult: (didPop, result) async {
-      if (didPop) return;
+      if (didPop || exporting) return;
       await persist();
       if (context.mounted && !dirty) Navigator.pop(context);
     },
@@ -191,6 +229,19 @@ class _EditorScreenState extends State<EditorScreen>
       appBar: AppBar(
         title: Text(widget.document.title),
         actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Export',
+            enabled: !loading && !exporting && error == null,
+            onSelected: export,
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'pdf',
+                child: Text('Export document as PDF'),
+              ),
+              PopupMenuItem(value: 'png', child: Text('Export page as PNG')),
+            ],
+            icon: const Icon(Icons.ios_share),
+          ),
           PopupMenuButton<String>(
             tooltip: 'Page actions',
             onSelected: pageAction,
@@ -235,6 +286,21 @@ class _EditorScreenState extends State<EditorScreen>
       ),
       body: Column(
         children: [
+          if (exporting)
+            ListTile(
+              leading: const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(),
+              ),
+              title: Text(
+                'Exporting $exportedPages / ${widget.document.pages.length}',
+              ),
+              trailing: TextButton(
+                onPressed: () => cancelExport = true,
+                child: const Text('Cancel'),
+              ),
+            ),
           if (error != null)
             MaterialBanner(
               content: Text(error!),

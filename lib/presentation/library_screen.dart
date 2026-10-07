@@ -55,8 +55,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     setState(() => importing = true);
     try {
       if (library.notebooks.isEmpty) library.addNotebook('My notebook');
-      final d = await FileImporter(library)
-          .importPdf(notebook ?? library.notebooks.first.id);
+      final importer = FileImporter(library);
+      final target = notebook ?? library.notebooks.first.id;
+      final d = image
+          ? await importer.importImage(target)
+          : await importer.importPdf(target);
       if (mounted && d != null) await openDocument(d);
     } catch (e) {
       if (mounted)
