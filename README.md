@@ -1,64 +1,52 @@
 # InkFlow
 
-**Keep handwritten notes and document annotations editable on your device, then export a visible copy when needed.**
+**A notebook for the things you would rather write by hand.**
 
-Typing is not always the right way to capture a sketch, mark a diagram or review a PDF. InkFlow brings notebooks, ink strokes and imported page backgrounds into one local workflow, so writing and annotation do not require an account or cloud library.
+Sketch an idea, mark up a diagram or work through a PDF in the same local notebook. InkFlow combines finger/stylus ink, imported page backgrounds and notebook organization on Android and iOS, without an account or cloud workflow.
 
-The workflow is **Write → Annotate → Organize → Export**. Ink remains structured stroke data inside the app; exported PDF/PNG files are flattened derivatives intended for viewing and sharing.
+Pages stay editable inside the app. When you need to send something, export a document as PDF or the current page as PNG and choose its destination through the operating system.
 
-## Writing and annotation
+## Write on a page, or bring your own
 
-Use a finger or stylus with pen colors, stroke widths and highlighter. Pressure affects ink width when the platform reports it. The whole-stroke eraser removes InkFlow ink, not content in an imported background. Undo/redo, page duplication/reordering and an explicit move mode support editing without mixing drawing gestures with pan/zoom.
+- **Handwriting:** pen colors and widths, highlighter, pressure when reported by the device, whole-stroke erase and undo/redo.
+- **Annotation:** import PDF, PNG, JPEG or WebP, draw over the original background, and switch to move mode for pan/zoom.
+- **Notebooks:** add, duplicate, reorder and move pages/documents; use titles, tags, favorites and metadata search to find them again.
 
-PDF, PNG, JPEG and WebP imports become page backgrounds. Notebooks, favorites, tags and local metadata search organize the library. **Search does not recognize handwriting or PDF text**; OCR and semantic search are not implemented.
+The eraser removes InkFlow strokes, leaving imported background content intact. Search covers organization metadata; handwriting recognition and OCR are future work.
 
-## Keeping input responsive while saving
+## Ink is stored as strokes
 
-```text
-Pointer samples → active ink repaint → committed vector strokes
-    → bounded undo history + cached completed ink
-    → debounced changed-page snapshot
-    → serialized local write queue → temporary file + backup + rename
-```
+A stroke retains its points, pressure and drawing style rather than becoming a screenshot of the page. This supports editable ink, whole-stroke erasing and an undo history built from shared stroke references.
 
-Active ink has its own repaint notifier. Completed strokes are cached in a disposable picture; metadata search does not load page ink. Undo retains shared stroke references for at most 80 edits instead of bitmap copies. JSON encoding/decoding runs in worker isolates.
+The active stroke repaints separately from cached completed ink. Only the active page background is decoded, with a bounded resolution. Undo keeps at most 80 edits. These choices keep page content and pointer updates from forcing the same work through the rendering path. [Canvas](lib/presentation/ink_canvas.dart) · [Performance design](docs/performance.md)
 
-Local writes are queued, flushed to a temporary file and renamed into place. A readable backup can recover damaged page data; a recovered backup is retained until a successful write. Save errors offer retry. Autosave is debounced by 500 ms, so an abrupt process kill can still lose the newest unsaved gesture. This is recovery-oriented persistence, not a guarantee against every storage failure.
+## Saving without rewriting the notebook
 
-Source: [ink canvas](lib/presentation/ink_canvas.dart), [editor](lib/presentation/editor_screen.dart), [local store](lib/data/local_store.dart). See [architecture](docs/architecture.md), [performance strategy](docs/performance.md) and [decisions](docs/decisions/).
+Changed pages are saved after a 500 ms debounce. JSON work runs in worker isolates; a serialized write queue flushes a temporary file, retains a backup and renames the new page into place. Read failures can recover a valid backup, and save failures allow retry.
 
-## Export is a deliberate fidelity trade-off
+A recovered backup remains available until a successful write. The trade-off is explicit: undo is session-only, and a process kill during the debounce can lose the newest unsaved gesture. [Local storage](lib/data/local_store.dart)
 
-The exporter renders backgrounds and strokes into a visible composite. PDF pages use JPEG derivatives with an 1800 px longest edge and quality 92; current-page PNG export is lossless at its rendered resolution. Original PDF text, forms, links and vector fidelity are not preserved in the output.
+## What leaves the notebook
 
-Pages are processed serially and JPEG compression runs in a worker. A 32 MiB compressed-payload budget rejects oversized PDF exports; this is not a 32 MiB total-process memory ceiling. Large notes need smaller exports or individual pages. See [exporter](lib/services/exporter.dart).
+PDF/PNG export combines the visible background and ink. PDF uses flattened page images with an 1800 px longest edge and JPEG quality 92; PNG preserves the rendered pixels losslessly. Source PDF text, forms, links and vector structure are not preserved in the exported copy.
 
-## Try it
+The exporter processes pages serially, compresses JPEG in a worker and caps retained compressed PDF payloads at 32 MiB. That bounds one part of export memory, not the whole process. Larger documents need smaller exports or individual pages. [Exporter](lib/services/exporter.dart)
 
-Use the Flutter/Dart versions declared by the project:
+## Open a notebook
 
 ```sh
 flutter pub get
 flutter run
 ```
 
-Create a notebook and page, draw with finger/stylus, test undo/redo and whole-stroke erase, then import a PDF and annotate it. Switch pages, reopen the app to inspect saved ink, and export PDF/PNG through the OS delivery flow. A real handwriting page and annotated PDF are the most useful screenshots; none are included yet.
+Use the project's declared Flutter/Dart toolchain. Create a page, draw, undo and erase; import a PDF and annotate it; reopen the app to inspect saved ink; then export both formats.
 
-Android and iOS runners are configured, with an iOS 15 target. Adaptive desktop-sized layouts do not imply desktop runners or web persistence support.
+Android and iOS runners are configured, with an iOS 15 target. Desktop-sized layouts are adaptive, but desktop runners and web persistence are not configured.
 
-## Verification and device gaps
+## Build status and data
 
-```sh
-flutter analyze
-flutter build apk --debug
-```
+The [verification record](docs/verification.md) reports successful Android debug packaging, analysis and formatting. Device/stylus checks, automated tests and iOS/release verification remain open. Run static/build checks with `flutter analyze` and `flutter build apk --debug`.
 
-The [verification record](docs/verification.md) reports successful Android debug packaging, static analysis and formatting. It reports no automated tests or manual device/stylus checks. iOS/release builds, pressure handling, file pickers, sharing, accessibility and lifecycle behavior remain unverified on devices. No performance benchmark is claimed; these checks were not rerun for this documentation change.
+Documents are private local files. Sharing sends the chosen derivative to the recipient app; OS backups/encryption are platform-controlled. InkFlow adds no document encryption, and deleted documents can leave private recovery files until app data is cleared. Password-protected PDFs and office files are unsupported. [Privacy](docs/privacy.md) · [Architecture](docs/architecture.md)
 
-## Local data and limits
-
-There is no runtime backend, analytics, AI API or document-upload integration. OS sharing delivers the selected derivative to the chosen app; backups and encryption remain platform-controlled. InkFlow adds no document encryption. Deleted documents may leave private recovery files until app data is cleared. Export before uninstalling. See [privacy](docs/privacy.md).
-
-Password-protected PDFs, office documents, handwriting recognition and cloud sync are outside scope. Undo history is session-only.
-
-No project license is selected. Dependencies include pdfrx (MIT), pdf (Apache-2.0), image (MIT) and Flutter plugins under their respective licenses; the app's information button exposes package licenses.
+No project license is selected. Package licenses are available through the app's information button.
