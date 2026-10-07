@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:ui' as ui;
+import 'dart:math';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -9,6 +10,68 @@ import '../domain/models.dart';
 class FileImporter {
   FileImporter(this.library);
   final Library library;
+  Future<InkDocument?> importImage(String notebookId) async {
+    final selected = await openFile(
+      acceptedTypeGroups: [
+        const XTypeGroup(
+          label: 'Images',
+          extensions: ['png', 'jpg', 'jpeg', 'webp'],
+          mimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
+          uniformTypeIdentifiers: [
+            'public.png',
+            'public.jpeg',
+            'org.webmproject.webp',
+          ],
+        ),
+      ],
+    );
+    if (selected == null) return null;
+    final extension = selected.name.split('.').last.toLowerCase();
+    if (!['png', 'jpg', 'jpeg', 'webp'].contains(extension))
+      throw const FormatException('Unsupported image format');
+    final asset = 'assets/${newId()}.$extension';
+    final file = library.store.file(asset);
+    try {
+      final sink = file.openWrite();
+      try {
+        await sink.addStream(selected.openRead());
+      } finally {
+        await sink.close();
+      }
+      final buffer = await ui.ImmutableBuffer.fromFilePath(file.path);
+      ui.ImageDescriptor? descriptor;
+      late double width, height;
+      try {
+        descriptor = await ui.ImageDescriptor.encoded(buffer);
+        final scale = 842 / max(descriptor.width, descriptor.height);
+        width = descriptor.width * scale;
+        height = descriptor.height * scale;
+      } finally {
+        descriptor?.dispose();
+        buffer.dispose();
+      }
+      final page = InkPage(
+        id: newId(),
+        width: width,
+        height: height,
+        background: asset,
+      );
+      await library.store.savePage(page);
+      final document = InkDocument(
+        id: newId(),
+        title: selected.name,
+        notebookId: notebookId,
+        pages: [page.id],
+      );
+      library.documents.add(document);
+      await library.save();
+      return document;
+    } catch (_) {
+      if (await file.exists()) await file.delete();
+      rethrow;
+    }
+  }
+
   Future<InkDocument?> importPdf(String notebookId) async {
     final selected = await openFile(
       acceptedTypeGroups: [

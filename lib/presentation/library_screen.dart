@@ -50,7 +50,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   String? notebook;
   bool favorites = false;
   bool importing = false;
-  Future<void> importPdf() async {
+  Future<void> importFile({bool image = false}) async {
     if (importing) return;
     setState(() => importing = true);
     try {
@@ -110,8 +110,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
           title: const Text('InkFlow'),
           actions: [
             IconButton(
+              tooltip: 'Import image',
+              onPressed: importing ? null : () => importFile(image: true),
+              icon: const Icon(Icons.image_outlined),
+            ),
+            IconButton(
               tooltip: 'Import PDF',
-              onPressed: importing ? null : importPdf,
+              onPressed: importing ? null : importFile,
               icon: const Icon(Icons.file_open_outlined),
             ),
             IconButton(
