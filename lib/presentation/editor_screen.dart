@@ -8,6 +8,7 @@ import '../domain/models.dart';
 import 'ink_canvas.dart';
 import '../services/page_renderer.dart';
 import '../services/exporter.dart';
+import '../services/export_delivery.dart';
 import 'library_screen.dart';
 
 class EditorScreen extends StatefulWidget {
@@ -45,7 +46,7 @@ class _EditorScreenState extends State<EditorScreen>
     });
     try {
       final exporter = FileExporter(widget.library.store);
-      final file = format == 'png'
+      final file = format.endsWith('png')
           ? await exporter.exportImage(drawing.page)
           : await exporter.exportPdf(
               widget.document,
@@ -54,10 +55,17 @@ class _EditorScreenState extends State<EditorScreen>
                 if (mounted) setState(() => exportedPages = done);
               },
             );
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Export saved: ${file.path}')));
+      if (!mounted || cancelExport) return;
+      final box = context.findRenderObject() as RenderBox?;
+      final anchor = box == null
+          ? const Rect.fromLTWH(0, 0, 1, 1)
+          : box.localToGlobal(Offset.zero) & box.size;
+      final delivery = ExportDelivery();
+      if (format.startsWith('share')) {
+        await delivery.share(file, widget.document.title, anchor);
+      } else {
+        await delivery.save(file, widget.document.title, anchor);
+      }
     } on ExportCancelled {
       /* User cancelled between pages. */
     } catch (e) {
@@ -239,6 +247,11 @@ class _EditorScreenState extends State<EditorScreen>
                 child: Text('Export document as PDF'),
               ),
               PopupMenuItem(value: 'png', child: Text('Export page as PNG')),
+              PopupMenuItem(
+                value: 'share-pdf',
+                child: Text('Share document PDF'),
+              ),
+              PopupMenuItem(value: 'share-png', child: Text('Share page PNG')),
             ],
             icon: const Icon(Icons.ios_share),
           ),
