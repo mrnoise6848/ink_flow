@@ -9,7 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../data/local_store.dart';
 import '../domain/models.dart';
-import '../presentation/ink_canvas.dart';
+import 'ink_renderer.dart';
 import 'page_renderer.dart';
 
 Uint8List compressPage(Uint8List png) {
