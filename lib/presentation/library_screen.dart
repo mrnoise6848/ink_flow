@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/library.dart';
 import '../domain/models.dart';
+import '../domain/search.dart';
 import 'editor_screen.dart';
 import 'document_details.dart';
 import '../services/importer.dart';
@@ -105,7 +106,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 (d) =>
                     (notebook == null || d.notebookId == notebook) &&
                     (!favorites || d.favorite) &&
-                    d.title.toLowerCase().contains(query.toLowerCase()),
+                    DocumentSearch().matches(d, library.notebooks, query),
               )
               .toList()
             ..sort((a, b) => b.modified.compareTo(a.modified));
@@ -159,7 +160,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   TextField(
                     decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.search),
-                      hintText: 'Search your library',
+                      hintText: 'Search titles, notebooks, tags or dates',
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (v) => setState(() => query = v),
