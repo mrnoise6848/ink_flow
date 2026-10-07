@@ -27,8 +27,9 @@ class FileImporter {
     );
     if (selected == null) return null;
     final extension = selected.name.split('.').last.toLowerCase();
-    if (!['png', 'jpg', 'jpeg', 'webp'].contains(extension))
+    if (!['png', 'jpg', 'jpeg', 'webp'].contains(extension)) {
       throw const FormatException('Unsupported image format');
+    }
     final asset = 'assets/${newId()}.$extension';
     final file = library.store.file(asset);
     try {
@@ -64,7 +65,10 @@ class FileImporter {
         pages: [page.id],
       );
       library.documents.add(document);
-      await library.save();
+      if (!await library.save()) {
+        library.documents.remove(document);
+        throw StateError(library.error!);
+      }
       return document;
     } catch (_) {
       if (await file.exists()) await file.delete();
@@ -97,8 +101,9 @@ class FileImporter {
       }
       await pdfrxFlutterInitialize();
       pdf = await PdfDocument.openFile(file.path);
-      if (pdf.pages.isEmpty)
+      if (pdf.pages.isEmpty) {
         throw const FormatException('PDF contains no pages');
+      }
       final document = InkDocument(
         id: newId(),
         title: selected.name,
@@ -117,7 +122,10 @@ class FileImporter {
         document.pages.add(page.id);
       }
       library.documents.add(document);
-      await library.save();
+      if (!await library.save()) {
+        library.documents.remove(document);
+        throw StateError(library.error!);
+      }
       return document;
     } catch (_) {
       if (await file.exists()) await file.delete();

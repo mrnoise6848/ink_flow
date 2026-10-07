@@ -3,13 +3,32 @@ import 'dart:math';
 String newId() =>
     '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${Random.secure().nextInt(1 << 32).toRadixString(36)}';
 
+String localId(Object? value) {
+  if (value is! String || !RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(value))
+    throw const FormatException('Invalid local ID');
+  return value;
+}
+
+double finiteNumber(Object? value) {
+  if (value is! num || !value.toDouble().isFinite)
+    throw const FormatException('Invalid number');
+  return value.toDouble();
+}
+
+List<String> pageIds(Object? value) {
+  final ids = (value as List).map(localId).toList();
+  if (ids.isEmpty || ids.toSet().length != ids.length)
+    throw const FormatException('Invalid document pages');
+  return ids;
+}
+
 class Notebook {
   Notebook({required this.id, required this.title});
   final String id;
   String title;
   Map<String, dynamic> toJson() => {'id': id, 'title': title};
   factory Notebook.fromJson(Map<String, dynamic> j) =>
-      Notebook(id: j['id'] as String, title: j['title'] as String);
+      Notebook(id: localId(j['id']), title: j['title'] as String);
 }
 
 class InkDocument {
@@ -45,12 +64,12 @@ class InkDocument {
     'favorite': favorite,
   };
   factory InkDocument.fromJson(Map<String, dynamic> j) => InkDocument(
-    id: j['id'] as String,
+    id: localId(j['id']),
     title: j['title'] as String,
-    notebookId: j['notebook'] as String,
+    notebookId: localId(j['notebook']),
     created: DateTime.parse(j['created'] as String),
     modified: DateTime.parse(j['modified'] as String),
-    pages: List<String>.from(j['pages'] as List),
+    pages: pageIds(j['pages']),
     tags: List<String>.from(j['tags'] as List),
     favorite: j['favorite'] as bool,
   );
@@ -98,8 +117,8 @@ class InkStroke {
         .map((p) => InkPoint.fromJson(p as List))
         .toList(),
     color: j['color'] as int,
-    width: ((j['width'] as num).toDouble()).clamp(0.5, 40),
-    opacity: ((j['opacity'] as num).toDouble()).clamp(0.05, 1),
+    width: finiteNumber(j['width']).clamp(0.5, 40),
+    opacity: finiteNumber(j['opacity']).clamp(0.05, 1),
     device: j['device'] as String,
     pressureSupported: j['pressure'] as bool,
   );
@@ -144,7 +163,7 @@ class InkPage {
       throw const FormatException('Invalid page dimensions');
     }
     return InkPage(
-      id: j['id'] as String,
+      id: localId(j['id']),
       width: w,
       height: h,
       background: j['background'] as String?,

@@ -28,8 +28,8 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen>
     with WidgetsBindingObserver {
   late DrawingController drawing = DrawingController(InkPage(id: newId()));
-  int index = 0;
-  bool loading = true, dirty = false;
+  int index = 0, loadGeneration = 0;
+  bool loading = true, dirty = false, pageUnavailable = true;
   String? error;
   ui.Image? background;
   Timer? timer;
@@ -37,7 +37,9 @@ class _EditorScreenState extends State<EditorScreen>
   bool exporting = false, cancelExport = false;
   int exportedPages = 0;
   Future<void> export(String format) async {
-    if (exporting || loading || error != null) return;
+    if (exporting || loading || pageUnavailable || drawing.pointer != null) {
+      return;
+    }
     await persist();
     if (dirty || !mounted) return;
     setState(() {
@@ -70,9 +72,10 @@ class _EditorScreenState extends State<EditorScreen>
     } on ExportCancelled {
       /* User cancelled between pages. */
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      }
     } finally {
       if (mounted) setState(() => exporting = false);
     }
@@ -95,7 +98,10 @@ class _EditorScreenState extends State<EditorScreen>
     try {
       await widget.library.store.savePage(page);
       widget.document.pages.insert(index + 1, page.id);
-      await widget.library.save();
+      if (!await widget.library.save()) {
+        widget.document.pages.remove(page.id);
+        throw StateError(widget.library.error!);
+      }
       await loadPage(index + 1);
     } catch (e) {
       if (mounted) setState(() => error = '$e');
@@ -103,7 +109,12 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Future<void> pageAction(String action) async {
-    if (loading || drawing.pointer != null) return;
+    if (loading ||
+        exporting ||
+        drawing.pointer != null ||
+        (pageUnavailable && action == 'duplicate')) {
+      return;
+    }
     if (action == 'add' || action == 'duplicate') {
       await addPage(duplicate: action == 'duplicate');
       return;
@@ -132,6 +143,7 @@ class _EditorScreenState extends State<EditorScreen>
     await persist();
     if (dirty || !mounted) return;
     final pages = widget.document.pages;
+    final previous = List<String>.of(pages), previousIndex = index;
     if (action == 'delete') {
       pages.removeAt(index);
       index = index.clamp(0, pages.length - 1);
@@ -142,7 +154,14 @@ class _EditorScreenState extends State<EditorScreen>
       pages.insert(target, id);
       index = target;
     }
-    await widget.library.save();
+    if (!await widget.library.save()) {
+      pages
+        ..clear()
+        ..addAll(previous);
+      index = previousIndex;
+      if (mounted) setState(() => error = widget.library.error);
+      return;
+    }
     await loadPage(index);
   }
 
@@ -155,28 +174,47 @@ class _EditorScreenState extends State<EditorScreen>
 
   Future<void> persist() async {
     timer?.cancel();
-    if (saving != null) await saving;
-    if (!dirty) return;
-    dirty = false;
-    final page = drawing.page;
-    saving = widget.library.savePage(widget.document, page);
-    try {
+    if (saving != null) {
       await saving;
-      if (mounted) setState(() => error = null);
+      if (dirty && error == null) await persist();
+      return;
+    }
+    if (!dirty) return;
+    final revision = drawing.revision;
+    saving = _writePage(revision);
+    await saving;
+    if (dirty && error == null) await persist();
+  }
+
+  Future<void> _writePage(int revision) async {
+    try {
+      await widget.library.savePage(widget.document, drawing.page);
+      dirty = drawing.revision != revision;
+      error = null;
     } catch (e) {
       dirty = true;
-      if (mounted) setState(() => error = '$e');
+      error = 'Save failed. Your changes remain in the editor. $e';
     } finally {
       saving = null;
+      if (mounted) setState(() {});
     }
   }
 
   Future<void> loadPage(int value) async {
+    final generation = ++loadGeneration;
+    if (exporting ||
+        drawing.pointer != null ||
+        value < 0 ||
+        value >= widget.document.pages.length) {
+      return;
+    }
     await persist();
     if (dirty) return;
     if (!mounted) return;
     setState(() {
       loading = true;
+      pageUnavailable = true;
+      index = value;
       error = null;
     });
     try {
@@ -184,7 +222,7 @@ class _EditorScreenState extends State<EditorScreen>
         widget.document.pages[value],
       );
       final image = await PageRenderer(widget.library.store).background(page);
-      if (!mounted) {
+      if (!mounted || generation != loadGeneration) {
         image?.dispose();
         return;
       }
@@ -197,7 +235,7 @@ class _EditorScreenState extends State<EditorScreen>
           timer?.cancel();
           timer = Timer(const Duration(milliseconds: 500), persist);
         };
-      index = value;
+      pageUnavailable = false;
     } catch (e) {
       error =
           'Could not load this page. The rest of the document is available. $e';
@@ -225,8 +263,12 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Future<void> clearPage() async {
-    if (drawing.page.strokes.isEmpty || loading || error != null || exporting)
+    if (drawing.page.strokes.isEmpty ||
+        loading ||
+        pageUnavailable ||
+        exporting) {
       return;
+    }
     final clear = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -250,11 +292,11 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void undo() {
-    if (!loading && error == null && !exporting) drawing.undo();
+    if (!loading && !pageUnavailable && !exporting) drawing.undo();
   }
 
   void redo() {
-    if (!loading && error == null && !exporting) drawing.redo();
+    if (!loading && !pageUnavailable && !exporting) drawing.redo();
   }
 
   @override
@@ -288,7 +330,7 @@ class _EditorScreenState extends State<EditorScreen>
             actions: [
               PopupMenuButton<String>(
                 tooltip: 'Export',
-                enabled: !loading && !exporting && error == null,
+                enabled: !loading && !exporting && !pageUnavailable,
                 onSelected: export,
                 itemBuilder: (_) => const [
                   PopupMenuItem(
@@ -382,109 +424,113 @@ class _EditorScreenState extends State<EditorScreen>
                     ),
                   ],
                 ),
-              ListenableBuilder(
-                listenable: drawing.status,
-                builder: (context, _) => Material(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        IconButton(
-                          tooltip: 'Undo',
-                          icon: const Icon(Icons.undo),
-                          onPressed:
-                              drawing.canUndo &&
-                                  !loading &&
-                                  error == null &&
-                                  !exporting
-                              ? undo
-                              : null,
-                        ),
-                        IconButton(
-                          tooltip: 'Redo',
-                          icon: const Icon(Icons.redo),
-                          onPressed:
-                              drawing.canRedo &&
-                                  !loading &&
-                                  error == null &&
-                                  !exporting
-                              ? redo
-                              : null,
-                        ),
-                        IconButton(
-                          tooltip: 'Pen',
-                          isSelected:
-                              !drawing.eraser &&
-                              !drawing.pan &&
-                              !drawing.highlight,
-                          icon: const Icon(Icons.edit),
-                          onPressed: () => setState(() {
-                            drawing.eraser = false;
-                            drawing.pan = false;
-                            drawing.highlight = false;
-                          }),
-                        ),
-                        IconButton(
-                          tooltip: 'Highlighter',
-                          isSelected: drawing.highlight && !drawing.pan,
-                          icon: const Icon(Icons.brush_outlined),
-                          onPressed: () => setState(() {
-                            drawing.highlight = true;
-                            drawing.eraser = false;
-                            drawing.pan = false;
-                          }),
-                        ),
-                        IconButton(
-                          tooltip: 'Eraser',
-                          isSelected: drawing.eraser,
-                          icon: const Icon(Icons.auto_fix_normal),
-                          onPressed: () => setState(() {
-                            drawing.eraser = true;
-                            drawing.pan = false;
-                          }),
-                        ),
-                        IconButton(
-                          tooltip: 'Pan and zoom',
-                          isSelected: drawing.pan,
-                          icon: const Icon(Icons.pan_tool_outlined),
-                          onPressed: () =>
-                              setState(() => drawing.pan = !drawing.pan),
-                        ),
-                        for (final color in [
-                          0xff202a35,
-                          0xff256d60,
-                          0xffc0392b,
-                          0xff265cc5,
-                          0xffffb300,
-                        ])
+              IgnorePointer(
+                ignoring: loading || pageUnavailable || exporting,
+                child: ListenableBuilder(
+                  listenable: drawing.status,
+                  builder: (context, _) => Material(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
                           IconButton(
-                            tooltip: {
-                              0xff202a35: 'Black ink',
-                              0xff256d60: 'Green ink',
-                              0xffc0392b: 'Red ink',
-                              0xff265cc5: 'Blue ink',
-                              0xffffb300: 'Amber ink',
-                            }[color]!,
-                            icon: Icon(Icons.circle, color: Color(color)),
+                            tooltip: 'Undo',
+                            icon: const Icon(Icons.undo),
+                            onPressed:
+                                drawing.canUndo &&
+                                    !loading &&
+                                    error == null &&
+                                    !exporting
+                                ? undo
+                                : null,
+                          ),
+                          IconButton(
+                            tooltip: 'Redo',
+                            icon: const Icon(Icons.redo),
+                            onPressed:
+                                drawing.canRedo &&
+                                    !loading &&
+                                    error == null &&
+                                    !exporting
+                                ? redo
+                                : null,
+                          ),
+                          IconButton(
+                            tooltip: 'Pen',
+                            isSelected:
+                                !drawing.eraser &&
+                                !drawing.pan &&
+                                !drawing.highlight,
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => setState(() {
+                              drawing.eraser = false;
+                              drawing.pan = false;
+                              drawing.highlight = false;
+                            }),
+                          ),
+                          IconButton(
+                            tooltip: 'Highlighter',
+                            isSelected: drawing.highlight && !drawing.pan,
+                            icon: const Icon(Icons.brush_outlined),
+                            onPressed: () => setState(() {
+                              drawing.highlight = true;
+                              drawing.eraser = false;
+                              drawing.pan = false;
+                            }),
+                          ),
+                          IconButton(
+                            tooltip: 'Eraser',
+                            isSelected: drawing.eraser,
+                            icon: const Icon(Icons.auto_fix_normal),
+                            onPressed: () => setState(() {
+                              drawing.eraser = true;
+                              drawing.pan = false;
+                            }),
+                          ),
+                          IconButton(
+                            tooltip: 'Pan and zoom',
+                            isSelected: drawing.pan,
+                            icon: const Icon(Icons.pan_tool_outlined),
                             onPressed: () =>
-                                setState(() => drawing.color = color),
+                                setState(() => drawing.pan = !drawing.pan),
                           ),
-                        SizedBox(
-                          width: 140,
-                          child: Slider(
-                            label: 'Stroke width ${drawing.width.round()}',
-                            value: drawing.width,
-                            min: 1,
-                            max: 20,
-                            onChanged: (v) => setState(() => drawing.width = v),
+                          for (final color in [
+                            0xff202a35,
+                            0xff256d60,
+                            0xffc0392b,
+                            0xff265cc5,
+                            0xffffb300,
+                          ])
+                            IconButton(
+                              tooltip: {
+                                0xff202a35: 'Black ink',
+                                0xff256d60: 'Green ink',
+                                0xffc0392b: 'Red ink',
+                                0xff265cc5: 'Blue ink',
+                                0xffffb300: 'Amber ink',
+                              }[color]!,
+                              icon: Icon(Icons.circle, color: Color(color)),
+                              onPressed: () =>
+                                  setState(() => drawing.color = color),
+                            ),
+                          SizedBox(
+                            width: 140,
+                            child: Slider(
+                              label: 'Stroke width ${drawing.width.round()}',
+                              value: drawing.width,
+                              min: 1,
+                              max: 20,
+                              onChanged: (v) =>
+                                  setState(() => drawing.width = v),
+                            ),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: 'Clear page',
-                          icon: const Icon(Icons.delete_sweep_outlined),
-                          onPressed: clearPage,
-                        ),
-                      ],
+                          IconButton(
+                            tooltip: 'Clear page',
+                            icon: const Icon(Icons.delete_sweep_outlined),
+                            onPressed: clearPage,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -503,7 +549,7 @@ class _EditorScreenState extends State<EditorScreen>
                 children: [
                   IconButton(
                     tooltip: 'Previous page',
-                    onPressed: index > 0 && !loading
+                    onPressed: index > 0 && !loading && !exporting
                         ? () => loadPage(index - 1)
                         : null,
                     icon: const Icon(Icons.chevron_left),
@@ -512,7 +558,9 @@ class _EditorScreenState extends State<EditorScreen>
                   IconButton(
                     tooltip: 'Next page',
                     onPressed:
-                        index + 1 < widget.document.pages.length && !loading
+                        index + 1 < widget.document.pages.length &&
+                            !loading &&
+                            !exporting
                         ? () => loadPage(index + 1)
                         : null,
                     icon: const Icon(Icons.chevron_right),
@@ -522,7 +570,7 @@ class _EditorScreenState extends State<EditorScreen>
               Expanded(
                 child: loading
                     ? const Center(child: CircularProgressIndicator())
-                    : error != null
+                    : pageUnavailable
                     ? const Center(child: Text('Page unavailable'))
                     : PageViewport(
                         key: ValueKey(drawing.page.id),

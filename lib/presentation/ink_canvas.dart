@@ -69,6 +69,17 @@ class DrawingController extends ChangeNotifier {
     changed();
   }
 
+  List<InkStroke>? _beforeGesture;
+  void commitGesture() {
+    final before = _beforeGesture;
+    if (before != null && !listEquals(before, page.strokes)) {
+      _undo.add(before);
+      if (_undo.length > 80) _undo.removeAt(0);
+      _redo.clear();
+    }
+    _beforeGesture = null;
+  }
+
   int? pointer;
   bool pressureAvailable = false;
   double pressure(PointerEvent e) {
@@ -85,7 +96,7 @@ class DrawingController extends ChangeNotifier {
   void begin(PointerDownEvent e) {
     if (pan || pointer != null) return;
     pointer = e.pointer;
-    checkpoint();
+    _beforeGesture = List.of(page.strokes);
     if (eraser) {
       erase(e.localPosition);
       return;
@@ -121,8 +132,10 @@ class DrawingController extends ChangeNotifier {
     if (active != null) {
       page.strokes.add(active!);
       active = null;
+      commitGesture();
       changed();
     }
+    commitGesture();
     pointer = null;
     status.value++;
     notifyListeners();
@@ -132,10 +145,11 @@ class DrawingController extends ChangeNotifier {
     if (pointer == e.pointer) {
       active = null;
       pointer = null;
-      if (_undo.isNotEmpty) {
+      if (_beforeGesture != null) {
         page.strokes
           ..clear()
-          ..addAll(_undo.removeLast());
+          ..addAll(_beforeGesture!);
+        _beforeGesture = null;
         changed();
       }
       notifyListeners();

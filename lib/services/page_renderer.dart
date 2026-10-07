@@ -16,8 +16,9 @@ class PageRenderer {
       await pdfrxFlutterInitialize();
       final document = await PdfDocument.openFile(file.path);
       try {
-        if (page.pdfPage! < 1 || page.pdfPage! > document.pages.length)
+        if (page.pdfPage! < 1 || page.pdfPage! > document.pages.length) {
           throw const FormatException('PDF page missing');
+        }
         final source = document.pages[page.pdfPage! - 1];
         final scale = maxDimension / max(source.width, source.height);
         final raster = await source.render(

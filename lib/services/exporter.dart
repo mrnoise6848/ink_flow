@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:pdf/pdf.dart';
@@ -15,8 +14,9 @@ import 'page_renderer.dart';
 
 Uint8List compressPage(Uint8List png) {
   final image = img.decodePng(png);
-  if (image == null)
+  if (image == null) {
     throw const FormatException('Could not encode export page');
+  }
   return img.encodeJpg(image, quality: 92);
 }
 
@@ -33,7 +33,7 @@ class FileExporter {
       ui.Rect.fromLTWH(0, 0, page.width, page.height),
       ui.Paint()..color = const ui.Color(0xffffffff),
     );
-    if (background != null)
+    if (background != null) {
       canvas.drawImageRect(
         background,
         ui.Rect.fromLTWH(
@@ -45,6 +45,7 @@ class FileExporter {
         ui.Rect.fromLTWH(0, 0, page.width, page.height),
         ui.Paint(),
       );
+    }
     paintStrokes(canvas, page.strokes);
     final picture = recorder.endRecording();
     ui.Image? image;
@@ -82,10 +83,11 @@ class FileExporter {
       final png = await pagePng(page);
       final jpeg = await compute(compressPage, png);
       compressedBytes += jpeg.length;
-      if (compressedBytes > 32 * 1024 * 1024)
+      if (compressedBytes > 32 * 1024 * 1024) {
         throw StateError(
           'This export exceeds the safe memory budget. Export smaller documents or individual pages.',
         );
+      }
       final image = pw.MemoryImage(jpeg);
       pdf.addPage(
         pw.Page(

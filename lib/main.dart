@@ -16,7 +16,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final library = Library();
-  late final Future<void> ready = library.initialize();
+  late Future<void> ready = library.initialize();
   @override
   void dispose() {
     library.dispose();
@@ -36,16 +36,18 @@ class _MyAppState extends State<MyApp> {
     home: FutureBuilder(
       future: ready,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done)
+        if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
-        if (snapshot.hasError)
+        }
+        if (snapshot.hasError) {
           return Scaffold(
             body: Center(
               child: Text('Could not open library: ${snapshot.error}'),
             ),
           );
+        }
         return LibraryScreen(library: library);
       },
     ),

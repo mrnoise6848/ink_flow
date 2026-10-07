@@ -64,9 +64,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
           : await importer.importPdf(target);
       if (mounted && d != null) await openDocument(d);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Import failed: $e')));
+      }
     } finally {
       if (mounted) setState(() => importing = false);
     }
@@ -89,11 +90,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
     final title = await askText(context, 'New note', 'Untitled note');
     if (title == null) return;
-    final d = await library.createDocument(
-      notebook ?? library.notebooks.first.id,
-      title,
-    );
-    if (mounted) await openDocument(d);
+    try {
+      final d = await library.createDocument(
+        notebook ?? library.notebooks.first.id,
+        title,
+      );
+      if (mounted) await openDocument(d);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not create note: $e')));
+      }
+    }
   }
 
   @override
@@ -152,6 +160,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (library.error != null)
+                    MaterialBanner(
+                      content: Text(library.error!),
+                      actions: [
+                        TextButton(
+                          onPressed: library.save,
+                          child: const Text('Retry save'),
+                        ),
+                      ],
+                    ),
+                  if (library.recoveryWarning != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(library.recoveryWarning!),
+                    ),
+                  if (importing) const LinearProgressIndicator(),
                   Text(
                     'Write. Annotate. Organize.',
                     style: Theme.of(context).textTheme.headlineSmall,
