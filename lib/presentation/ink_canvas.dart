@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import '../domain/models.dart';
 
 class DrawingController extends ChangeNotifier {
@@ -11,11 +12,19 @@ class DrawingController extends ChangeNotifier {
   bool eraser = false, highlight = false, pan = false;
   VoidCallback? onChanged;
   int? pointer;
+  bool pressureAvailable = false;
+  double pressure(PointerEvent e) {
+    final stylus = e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus;
+    final supported = stylus && e.pressureMax > e.pressureMin;
+    pressureAvailable = supported;
+    if (!supported) return 1;
+    return ((e.pressure - e.pressureMin) / (e.pressureMax - e.pressureMin)).clamp(0.05, 1);
+  }
   void begin(PointerDownEvent e) {
     if (pan || pointer != null) return;
     pointer = e.pointer;
     if (eraser) { erase(e.localPosition); return; }
-    active = InkStroke(points: [InkPoint(e.localPosition.dx, e.localPosition.dy)], color: color, width: width, opacity: highlight ? 0.3 : 1, device: e.kind.name);
+    active = InkStroke(points: [InkPoint(e.localPosition.dx, e.localPosition.dy, pressure(e))], color: color, width: width, opacity: highlight ? 0.3 : 1, device: e.kind.name, pressureSupported: pressureAvailable);
     notifyListeners();
   }
   void move(PointerMoveEvent e) {
@@ -25,7 +34,7 @@ class DrawingController extends ChangeNotifier {
     if (s == null) return;
     final p = s.points.last;
     if ((Offset(p.x, p.y) - e.localPosition).distance < 0.5) return;
-    s.points.add(InkPoint(e.localPosition.dx, e.localPosition.dy)); notifyListeners();
+    s.points.add(InkPoint(e.localPosition.dx, e.localPosition.dy, pressure(e))); notifyListeners();
   }
   void end(PointerEvent e) {
     if (e.pointer != pointer) return;
