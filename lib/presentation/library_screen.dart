@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/library.dart';
 import '../domain/models.dart';
 import 'editor_screen.dart';
+import '../services/importer.dart';
 
 Future<String?> askText(
   BuildContext context,
@@ -48,6 +49,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
   String query = '';
   String? notebook;
   bool favorites = false;
+  bool importing = false;
+  Future<void> importPdf() async {
+    if (importing) return;
+    setState(() => importing = true);
+    try {
+      if (library.notebooks.isEmpty) library.addNotebook('My notebook');
+      final d = await FileImporter(library)
+          .importPdf(notebook ?? library.notebooks.first.id);
+      if (mounted && d != null) await openDocument(d);
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    } finally {
+      if (mounted) setState(() => importing = false);
+    }
+  }
+
   Library get library => widget.library;
   Future<void> openDocument(InkDocument d) async {
     await Navigator.push<void>(
@@ -90,6 +109,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
         appBar: AppBar(
           title: const Text('InkFlow'),
           actions: [
+            IconButton(
+              tooltip: 'Import PDF',
+              onPressed: importing ? null : importPdf,
+              icon: const Icon(Icons.file_open_outlined),
+            ),
             IconButton(
               tooltip: 'Privacy',
               icon: const Icon(Icons.shield_outlined),
