@@ -13,6 +13,32 @@ class DrawingController extends ChangeNotifier {
   double width = 3;
   bool eraser = false, highlight = false, pan = false;
   VoidCallback? onChanged;
+  int revision = 0;
+  ui.Picture? _picture;
+  int _pictureRevision = -1;
+  ui.Picture get picture {
+    if (_picture == null || _pictureRevision != revision) {
+      _picture?.dispose();
+      final recorder = ui.PictureRecorder();
+      paintStrokes(Canvas(recorder), page.strokes);
+      _picture = recorder.endRecording();
+      _pictureRevision = revision;
+    }
+    return _picture!;
+  }
+
+  @override
+  void dispose() {
+    _picture?.dispose();
+    super.dispose();
+  }
+
+  void changed() {
+    revision++;
+    onChanged?.call();
+    notifyListeners();
+  }
+
   final List<List<InkStroke>> _undo = [], _redo = [];
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
@@ -28,8 +54,7 @@ class DrawingController extends ChangeNotifier {
     page.strokes
       ..clear()
       ..addAll(_undo.removeLast());
-    onChanged?.call();
-    notifyListeners();
+    changed();
   }
 
   void redo() {
@@ -38,8 +63,7 @@ class DrawingController extends ChangeNotifier {
     page.strokes
       ..clear()
       ..addAll(_redo.removeLast());
-    onChanged?.call();
-    notifyListeners();
+    changed();
   }
 
   int? pointer;
@@ -93,7 +117,7 @@ class DrawingController extends ChangeNotifier {
     if (active != null) {
       page.strokes.add(active!);
       active = null;
-      onChanged?.call();
+      changed();
     }
     pointer = null;
     notifyListeners();
@@ -107,21 +131,35 @@ class DrawingController extends ChangeNotifier {
         page.strokes
           ..clear()
           ..addAll(_undo.removeLast());
-        onChanged?.call();
+        changed();
       }
       notifyListeners();
     }
   }
 
+  bool hitsStroke(InkStroke s, Offset point) {
+    final radius = 12 + s.width / 2;
+    for (var i = 0; i < s.points.length; i++) {
+      final b = Offset(s.points[i].x, s.points[i].y);
+      if ((point - b).distance <= radius) return true;
+      if (i == 0) continue;
+      final a = Offset(s.points[i - 1].x, s.points[i - 1].y), delta = b - a;
+      final length = delta.distanceSquared;
+      if (length == 0) continue;
+      final t =
+          (((point.dx - a.dx) * delta.dx + (point.dy - a.dy) * delta.dy) /
+                  length)
+              .clamp(0.0, 1.0);
+      if ((point - (a + delta * t)).distance <= radius) return true;
+    }
+    return false;
+  }
+
   void erase(Offset point) {
     final old = page.strokes.length;
-    page.strokes.removeWhere(
-      (s) => s.points.any(
-        (p) => (point - Offset(p.x, p.y)).distance < 12 + s.width / 2,
-      ),
-    );
+    page.strokes.removeWhere((s) => hitsStroke(s, point));
     if (page.strokes.length != old) {
-      onChanged?.call();
+      changed();
       notifyListeners();
     }
   }
@@ -130,8 +168,7 @@ class DrawingController extends ChangeNotifier {
     if (page.strokes.isEmpty || pointer != null) return;
     checkpoint();
     page.strokes.clear();
-    onChanged?.call();
-    notifyListeners();
+    changed();
   }
 }
 
@@ -160,7 +197,7 @@ class InkPainter extends CustomPainter {
   final DrawingController controller;
   @override
   void paint(Canvas canvas, Size size) {
-    paintStrokes(canvas, controller.page.strokes);
+    canvas.drawPicture(controller.picture);
     if (controller.active != null) paintStrokes(canvas, [controller.active!]);
   }
 
