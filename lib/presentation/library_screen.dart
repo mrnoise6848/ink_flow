@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/library.dart';
 import '../domain/models.dart';
 import 'editor_screen.dart';
+import 'document_details.dart';
 import '../services/importer.dart';
 
 Future<String?> askText(
@@ -245,19 +246,33 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                     '${d.pages.length} pages • ${d.modified.toLocal().toString().substring(0, 16)}',
                                   ),
                                   onTap: () => openDocument(d),
-                                  trailing: IconButton(
-                                    tooltip: d.favorite
-                                        ? 'Remove favorite'
-                                        : 'Favorite',
-                                    icon: Icon(
-                                      d.favorite
-                                          ? Icons.star
-                                          : Icons.star_border,
-                                    ),
-                                    onPressed: () {
-                                      d.favorite = !d.favorite;
-                                      library.changed(d);
-                                    },
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Document options',
+                                        icon: const Icon(Icons.more_vert),
+                                        onPressed: () => documentDetails(
+                                          context,
+                                          library,
+                                          d,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: d.favorite
+                                            ? 'Remove favorite'
+                                            : 'Favorite',
+                                        icon: Icon(
+                                          d.favorite
+                                              ? Icons.star
+                                              : Icons.star_border,
+                                        ),
+                                        onPressed: () {
+                                          d.favorite = !d.favorite;
+                                          library.changed(d);
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ),
                               );
