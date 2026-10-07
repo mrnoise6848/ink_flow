@@ -1,69 +1,64 @@
 # InkFlow
 
-Write, annotate, organize — without the cloud.
+**Keep handwritten notes and document annotations editable on your device, then export a visible copy when needed.**
 
-Typed note apps often interrupt handwriting and PDF annotation. InkFlow gives you
-private notebooks, real ink and a straightforward Write → Annotate → Organize →
-Export workflow, without signing in.
+Typing is not always the right way to capture a sketch, mark a diagram or review a PDF. InkFlow brings notebooks, ink strokes and imported page backgrounds into one local workflow, so writing and annotation do not require an account or cloud library.
 
-## Features
-- Notebooks, recent notes, favorites, tags and local metadata search.
-- Finger/stylus handwriting, pressure where exposed by the platform, pen colors,
-  stroke width, highlighter, whole-stroke eraser, undo/redo and clear.
-- Add, duplicate, delete and reorder pages; rename notes/notebooks and move notes.
-- Import PDF, PNG, JPEG and WebP through the system file picker.
-- Annotate original page backgrounds, with an explicit move mode for pan/zoom.
-- Autosave locally; atomic page files, backups, recovery and save retry.
-- Export a document as PDF or the current page as PNG; system sharing.
-- Keyboard shortcuts: Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z, Ctrl+Y, Ctrl/Cmd+S.
+The workflow is **Write → Annotate → Organize → Export**. Ink remains structured stroke data inside the app; exported PDF/PNG files are flattened derivatives intended for viewing and sharing.
 
-## Architecture
-Existing Flutter State/ChangeNotifier + Navigator, with domain, private-file data,
-service and presentation boundaries. No account, backend or AI API. See
-[architecture](docs/architecture.md) and [decisions](docs/decisions).
-Flutter 3.47.4 / Dart 3.13.3 and original platform identifiers are preserved.
+## Writing and annotation
 
-## Run and build
+Use a finger or stylus with pen colors, stroke widths and highlighter. Pressure affects ink width when the platform reports it. The whole-stroke eraser removes InkFlow ink, not content in an imported background. Undo/redo, page duplication/reordering and an explicit move mode support editing without mixing drawing gestures with pan/zoom.
+
+PDF, PNG, JPEG and WebP imports become page backgrounds. Notebooks, favorites, tags and local metadata search organize the library. **Search does not recognize handwriting or PDF text**; OCR and semantic search are not implemented.
+
+## Keeping input responsive while saving
+
+```text
+Pointer samples → active ink repaint → committed vector strokes
+    → bounded undo history + cached completed ink
+    → debounced changed-page snapshot
+    → serialized local write queue → temporary file + backup + rename
+```
+
+Active ink has its own repaint notifier. Completed strokes are cached in a disposable picture; metadata search does not load page ink. Undo retains shared stroke references for at most 80 edits instead of bitmap copies. JSON encoding/decoding runs in worker isolates.
+
+Local writes are queued, flushed to a temporary file and renamed into place. A readable backup can recover damaged page data; a recovered backup is retained until a successful write. Save errors offer retry. Autosave is debounced by 500 ms, so an abrupt process kill can still lose the newest unsaved gesture. This is recovery-oriented persistence, not a guarantee against every storage failure.
+
+Source: [ink canvas](lib/presentation/ink_canvas.dart), [editor](lib/presentation/editor_screen.dart), [local store](lib/data/local_store.dart). See [architecture](docs/architecture.md), [performance strategy](docs/performance.md) and [decisions](docs/decisions/).
+
+## Export is a deliberate fidelity trade-off
+
+The exporter renders backgrounds and strokes into a visible composite. PDF pages use JPEG derivatives with an 1800 px longest edge and quality 92; current-page PNG export is lossless at its rendered resolution. Original PDF text, forms, links and vector fidelity are not preserved in the output.
+
+Pages are processed serially and JPEG compression runs in a worker. A 32 MiB compressed-payload budget rejects oversized PDF exports; this is not a 32 MiB total-process memory ceiling. Large notes need smaller exports or individual pages. See [exporter](lib/services/exporter.dart).
+
+## Try it
+
+Use the Flutter/Dart versions declared by the project:
+
 ```sh
 flutter pub get
 flutter run
+```
+
+Create a notebook and page, draw with finger/stylus, test undo/redo and whole-stroke erase, then import a PDF and annotate it. Switch pages, reopen the app to inspect saved ink, and export PDF/PNG through the OS delivery flow. A real handwriting page and annotated PDF are the most useful screenshots; none are included yet.
+
+Android and iOS runners are configured, with an iOS 15 target. Adaptive desktop-sized layouts do not imply desktop runners or web persistence support.
+
+## Verification and device gaps
+
+```sh
 flutter analyze
 flutter build apk --debug
 ```
-iOS uses standard CocoaPods plugin integration and the existing iOS 15 target.
-Android and iOS are configured; desktop-sized layouts are adaptive, but desktop
-platform runners and web persistence are not configured in this project.
 
-## Performance
-Active-page rendering, cached vector ink, bounded decoding, debounced page saves,
-worker-isolate JSON/JPEG operations and capped undo history. Export processes pages
-serially; a 32MiB compressed PDF payload budget prevents unlimited memory growth.
-See [performance](docs/performance.md). Device performance is not benchmarked.
+The [verification record](docs/verification.md) reports successful Android debug packaging, static analysis and formatting. It reports no automated tests or manual device/stylus checks. iOS/release builds, pressure handling, file pickers, sharing, accessibility and lifecycle behavior remain unverified on devices. No performance benchmark is claimed; these checks were not rerun for this documentation change.
 
-## Privacy
-Documents are stored on device. Sharing sends the selected derivative through the
-OS to an app you choose. No analytics or document uploads. OS backups/encryption
-are platform-controlled; InkFlow does not add encryption. Deleted documents may
-leave private recovery files until app data is cleared. See [privacy](docs/privacy.md).
+## Local data and limits
 
-## Limitations
-- Flattened PDF exports preserve visible content, but lose searchable text, forms,
-  links and source vector fidelity. Longest raster edge is 1800px, JPEG quality 92.
-- Password-protected PDFs and office document formats are not supported.
-- Eraser deletes whole InkFlow strokes, not original background content.
-- Handwriting recognition, OCR, semantic search and cloud sync are future work.
-- Extremely large exports must be split into smaller notes or exported page by page.
-- Undo history is session-only; the latest gesture may be lost if the OS kills the
-  process within the autosave debounce period. Export before uninstalling.
-- Manual device/stylus checks have not been performed; no screenshots are fabricated.
+There is no runtime backend, analytics, AI API or document-upload integration. OS sharing delivers the selected derivative to the chosen app; backups and encryption remain platform-controlled. InkFlow adds no document encryption. Deleted documents may leave private recovery files until app data is cleared. Export before uninstalling. See [privacy](docs/privacy.md).
 
-## Verification
-Tests are intentionally not executed or added, as requested. The obsolete template
-counter test is removed. Static analysis and build results are recorded in
-[verification](docs/verification.md). See [phases](docs/phases.md) for scope.
+Password-protected PDFs, office documents, handwriting recognition and cloud sync are outside scope. Undo history is session-only.
 
-## Dependencies and licenses
-pdfrx (MIT), pdf (Apache-2.0), image (MIT), file_selector, path_provider and
-share_plus (BSD-3-Clause). No application source is copied. View package licenses
-from the app's information button. This repository has no project license yet;
-third-party package licenses do not automatically license InkFlow itself.
+No project license is selected. Dependencies include pdfrx (MIT), pdf (Apache-2.0), image (MIT) and Flutter plugins under their respective licenses; the app's information button exposes package licenses.
