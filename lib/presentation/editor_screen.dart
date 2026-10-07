@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../data/library.dart';
 import '../domain/models.dart';
 import 'ink_canvas.dart';
+import 'page_viewport.dart';
 import '../services/page_renderer.dart';
 import '../services/exporter.dart';
 import '../services/export_delivery.dart';
@@ -26,7 +27,6 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen>
     with WidgetsBindingObserver {
   late DrawingController drawing = DrawingController(InkPage(id: newId()));
-  final transform = TransformationController();
   int index = 0;
   bool loading = true, dirty = false;
   String? error;
@@ -197,7 +197,6 @@ class _EditorScreenState extends State<EditorScreen>
           timer = Timer(const Duration(milliseconds: 500), persist);
         };
       index = value;
-      transform.value = Matrix4.identity();
     } catch (e) {
       error =
           'Could not load this page. The rest of the document is available. $e';
@@ -221,7 +220,6 @@ class _EditorScreenState extends State<EditorScreen>
     timer?.cancel();
     drawing.dispose();
     background?.dispose();
-    transform.dispose();
     super.dispose();
   }
 
@@ -435,23 +433,17 @@ class _EditorScreenState extends State<EditorScreen>
                 ? const Center(child: CircularProgressIndicator())
                 : error != null
                 ? const Center(child: Text('Page unavailable'))
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      final scale = (constraints.maxWidth / drawing.page.width)
-                          .clamp(0.1, 1.0);
-                      return InteractiveViewer(
-                        transformationController: transform,
-                        constrained: false,
-                        minScale: scale * 0.5,
-                        maxScale: 5,
-                        panEnabled: drawing.pan,
-                        scaleEnabled: drawing.pan,
-                        child: InkCanvas(
-                          controller: drawing,
-                          background: background,
-                        ),
-                      );
-                    },
+                : PageViewport(
+                    key: ValueKey(drawing.page.id),
+                    pageSize: Size(drawing.page.width, drawing.page.height),
+                    pan: drawing.pan,
+                    child: AbsorbPointer(
+                      absorbing: exporting,
+                      child: InkCanvas(
+                        controller: drawing,
+                        background: background,
+                      ),
+                    ),
                   ),
           ),
         ],
