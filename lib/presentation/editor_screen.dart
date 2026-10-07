@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../data/library.dart';
 import '../domain/models.dart';
 import 'ink_canvas.dart';
+import '../services/page_renderer.dart';
 import 'library_screen.dart';
 
 class EditorScreen extends StatefulWidget {
@@ -26,6 +28,7 @@ class _EditorScreenState extends State<EditorScreen>
   int index = 0;
   bool loading = true, dirty = false;
   String? error;
+  ui.Image? background;
   Timer? timer;
   Future<void>? saving;
   Future<void> addPage({bool duplicate = false}) async {
@@ -133,7 +136,13 @@ class _EditorScreenState extends State<EditorScreen>
       final page = await widget.library.store.loadPage(
         widget.document.pages[value],
       );
-      if (!mounted) return;
+      final image = await PageRenderer(widget.library.store).background(page);
+      if (!mounted) {
+        image?.dispose();
+        return;
+      }
+      background?.dispose();
+      background = image;
       drawing.dispose();
       drawing = DrawingController(page)
         ..onChanged = () {
@@ -165,6 +174,7 @@ class _EditorScreenState extends State<EditorScreen>
     WidgetsBinding.instance.removeObserver(this);
     timer?.cancel();
     drawing.dispose();
+    background?.dispose();
     transform.dispose();
     super.dispose();
   }
@@ -265,6 +275,16 @@ class _EditorScreenState extends State<EditorScreen>
                     }),
                   ),
                   IconButton(
+                    tooltip: 'Highlighter',
+                    isSelected: drawing.highlight && !drawing.pan,
+                    icon: const Icon(Icons.brush_outlined),
+                    onPressed: () => setState(() {
+                      drawing.highlight = true;
+                      drawing.eraser = false;
+                      drawing.pan = false;
+                    }),
+                  ),
+                  IconButton(
                     tooltip: 'Eraser',
                     isSelected: drawing.eraser,
                     icon: const Icon(Icons.auto_fix_normal),
@@ -347,7 +367,10 @@ class _EditorScreenState extends State<EditorScreen>
                         maxScale: 5,
                         panEnabled: drawing.pan,
                         scaleEnabled: drawing.pan,
-                        child: InkCanvas(controller: drawing),
+                        child: InkCanvas(
+                          controller: drawing,
+                          background: background,
+                        ),
                       );
                     },
                   ),
